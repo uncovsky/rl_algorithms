@@ -20,7 +20,7 @@ class Policy:
 def get_distribution(name, params):
 
     distributions = {
-        "normal": torch.distributions.multivariate_normal.MultivariateNormal,
+        "normal": torch.distributions.Normal,
         "uniform": torch.distributions.Uniform,
         "bernoulli": torch.distributions.Bernoulli,
         "poisson": torch.distributions.Poisson,
@@ -56,11 +56,11 @@ class StochasticPolicy(Policy):
         return self.value_net(states)
 
     @torch.no_grad
-    def play(self, state):
+    def play(self, states):
         # Assume network returns mu, logstd
-        dist = self.get_distribution(state)
-        action = dist.sample()
-        return utils.to_numpy(action)
+        dist = self.get_distribution(states)
+        actions = dist.sample()
+        return utils.to_numpy(actions)
 
     # Get action distribution for a state/states
     def get_distribution(self, states):
@@ -71,7 +71,7 @@ class StochasticPolicy(Policy):
     # Get logprobs for actions at states
     def logprob(self, states, actions):
         dist = self.get_distribution(states)
-        return dist.log_prob(actions).unsqueeze(-1)
+        return dist.log_prob(actions)
 
 
 class DiscretePolicy(StochasticPolicy):
@@ -90,14 +90,16 @@ class GaussianPolicy(StochasticPolicy):
     # assume the params are mu, logstd
     def get_distribution(self, states):
         params = self.net(states)
-        half = len(params) // 2
+        size = params.size()
 
-        mu, logstd = params[:half], params[half:]
+        if len(size) == 1:
+            half = size[0] // 2
+            mu, logstd = params[:half], params[half:]
+
+        else:
+            half = size[1] // 2
+            mu, logstd = params[:, :half], params[:, half:]
+
         std = torch.exp(logstd)
-        # Diagonal Covariance
-        params = [ mu, torch.diag(std) ]
-
-        dist = get_distribution(self.dist_str, params)
-
-        return dist
+        return torch.distributions.Normal(mu, std)
 

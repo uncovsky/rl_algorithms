@@ -27,6 +27,10 @@ class SAC_Trainer:
         # Network descriptions, 2 layers
         value_desc = [ (activation, input_size, hidden_size), 
                        ("id", hidden_size, 1) ]
+
+        q_desc = [ (activation, input_size + output_size, hidden_size), 
+                        ("id", hidden_size, 1) ]
+
         policy_desc = [ (activation, input_size, hidden_size), 
                         ("id", hidden_size, 2 * output_size) ]
 
@@ -38,8 +42,12 @@ class SAC_Trainer:
         self.policy_net = make_mlp(policy_desc)
         
         # Two Q-value nets for reduced bias
-        self.q1_net = make_mlp(policy_desc)
-        self.q2_net = make_mlp(policy_desc)
+        self.q1_net = make_mlp(q_desc)
+        self.q2_net = make_mlp(q_desc)
+
+        # Target nets
+        self.q1_target = make_mlp(q_desc)
+        self.q2_target = make_mlp(q_desc)
 
         # Value net and target, perhaps try later?
         self.value_net = make_mlp(value_desc)
@@ -47,7 +55,9 @@ class SAC_Trainer:
 
         self.initialize_networks()
 
-        # Copy params to target
+        # Copy params to target nets
+        self.q1_target.load_state_dict(self.q1_net.state_dict())
+        self.q2_target.load_state_dict(self.q2_net.state_dict())
         self.value_target_net.load_state_dict(self.value_net.state_dict())
 
         # Size of buffer and minibatches
@@ -79,24 +89,41 @@ class SAC_Trainer:
             initialize_layer(layer)
         initialize_layer(layers[-1], std=1.)
 
+        layers = self.q1_net[::2]
+        for layer in layers[:-1]:
+            initialize_layer(layer)
+        initialize_layer(layers[-1], std=1.)
+
+        layers = self.q2_net[::2]
+        for layer in layers[:-1]:
+            initialize_layer(layer)
+        initialize_layer(layers[-1], std=1.)
+
         self.value_target_net.to(utils.device)
         self.value_net.to(utils.device)
         self.policy_net.to(utils.device)
         self.q1_net.to(utils.device)
         self.q2_net.to(utils.device)
+        self.q1_target.to(utils.device)
+        self.q2_target.to(utils.device)
 
 
     def get_policy(self):
         return GaussianPolicy(self.policy_net, self.value_net)
 
+    def soft_update_targets(self):
+        params1 = self.q1_target.state_dict()
+        params2 = self.q2_target.state_dict()
 
-    def soft_update_target(self):
-        params = self.value_target_net.state_dict()
-        value_params = self.value_net.state_dict()
+        value1_params = self.q1_net.state_dict()
+        value2_params = self.q2_net.state_dict()
 
         for key in params.keys():
-            params[key] *= (1 - self.tau)
-            params[key] += self.tau * value_params[key]
+            params1[key] *= (1 - self.tau)
+            params1[key] += self.tau * value_params1[key]
+
+            params2[key] *= (1 - self.tau)
+            params2[key] += self.tau * value_params2[key]
         
     def train(self, step_limit, gamma=0.99):
 
@@ -134,30 +161,51 @@ class SAC_Trainer:
                     if terminated or truncated:
                         done = True 
 
-    def calculate_targets(self, states, rewards, succs, dones, gamma):
 
-        bootstrap = torch.min(self.q1_net(succs), self.q2_net(succs))
+    @torch.no_grad
+    def calculate_targets(self, states, rewards, succs, dones, gamma):
+        policy = self.get_policy()
+
+        actions = utils.to_torch(policy.play(succs))
+        args = torch.cat((succs, actions), dim=1)
+        log_probs = policy.logprob(succs, actions).sum(dim=1, keepdim=True)
+
+        bootstrap = torch.min( self.q1_target(args), self.q2_target(args) )
+
+        targets = rewards + dones * bootstrap - self.alpha * log_probs
+
+        return targets, log_probs
+
 
     def update(self, gamma):
+
         if len(self.buffer) < self.batch_size:
             return
         
-        batch = self.buffer.sample(self.batch_size)
-
-    
-        states = torch.stack(batch[0], dim=0)
-        succs = torch.stack(batch[3], dim=0)
-
-        actions = torch.tensor(np.array(batch[1]))
-
-        print(actions)
-        rewards = torch.tensor(batch[2]).unsqueeze(-1)
-
-        dones = torch.tensor(batch[4]).unsqueeze(-1)
+        states, actions, rewards, succs, dones = self.buffer.sample(self.batch_size)
+        dones = dones.float().unsqueeze(-1)
 
         # Calculate targets
-        self.calculate_targets(states, rewards, succs, dones, gamma)
+        targets, logprobs = self.calculate_targets(states, rewards, succs, dones, gamma)
 
-    def loss_fn(self):
-        pass
 
+        mse_fn = nn.MSELoss(reduction='mean')
+
+        """
+            Update Q-networks
+        """
+        self.q1_opt.zero_grad()
+        self.q2_opt.zero_grad()
+
+        q1loss = mse_fn(self.q1_net(states), targets)
+        q2loss = mse_fn(self.q2_net(states), targets)
+
+        """
+            TODO POLICY UPDATE
+        """
+
+        q1_loss.backward()
+        q2_loss.backward()
+
+        self.q1_opt.step()
+        self.q2_opt.step()
