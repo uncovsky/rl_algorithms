@@ -1,3 +1,13 @@
-*
-!algorithms
-!algorithms/*
+# Ignore everything
+/*
+
+# Unignore the algorithms directory
+!/algorithms/
+
+# Unignore all contents within algorithms
+!/algorithms/**
+
+# Ignore the __pycache__ directory within infrastructure
+/algorithms/infrastructure/__pycache__/
+/algorithms/__pycache__/
+/algorithms/results/

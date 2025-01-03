@@ -1,6 +1,6 @@
 import infrastructure.utils as utils
 from infrastructure.logger import Logger
-from pg_utils import initialize_layer
+from infrastructure.pg_utils import initialize_layer
 
 import gymnasium as gym
 import numpy as np
