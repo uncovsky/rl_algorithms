@@ -1,17 +1,16 @@
 # DQN
 
 import gymnasium as gym
-import infrastructure.utils as utils
 import infrastructure.envs as envs
 from infrastructure.logger import Logger
+from infrastructure.replay_buffer import RingBuffer
+import infrastructure.utils as utils
 
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from replay_buffer import RingBuffer
 
 class DQNNet(nn.Module):
     # input ~ dimensions of state space, output ~ action count (discrete envs)

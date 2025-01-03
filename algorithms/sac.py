@@ -2,12 +2,12 @@ import infrastructure.utils as utils
 from infrastructure.logger import Logger
 from infrastructure.nn_utils import make_mlp
 from infrastructure.pg_utils import initialize_layer
+from infrastructure.replay_buffer import RingBuffer
 
 import numpy as np
 
 from policies import GaussianPolicy, DiscretePolicy
 
-from replay_buffer import RingBuffer
 
 import torch
 from torch.optim import Adam
