@@ -3,9 +3,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-
-
-
 def get_activation(act_str):
     # Map activation strings to activation functions
     act_str = act_str.lower()

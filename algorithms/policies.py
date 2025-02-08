@@ -2,8 +2,6 @@ import torch
 import infrastructure.utils as utils
 import torch.nn as nn
 
-
-
 # Generic policy interface
 class Policy:
     def __init__(self, *args, **kwargs):
@@ -48,6 +46,13 @@ class StochasticPolicy(Policy):
         self.value_net = value_network
         self.dist_str = dist_str
 
+
+    def policy_params(self):
+        return self.net.parameters()
+
+    def value_params(self):
+        return self.value_net.parameters()
+
     @torch.no_grad()
     def value_nograd(self, states):
         return self.value_net(states)
@@ -62,6 +67,9 @@ class StochasticPolicy(Policy):
         actions = dist.sample()
         return utils.to_numpy(actions)
 
+    def logits(self, states):
+        return self.net(states)
+
     # Get action distribution for a state/states
     def get_distribution(self, states):
         params = self.net(states)
@@ -73,7 +81,10 @@ class StochasticPolicy(Policy):
         dist = self.get_distribution(states)
         return dist.log_prob(actions)
 
-
+"""
+    Stochastic policy ~ Categorical distribution over a discrete space of
+    actions, i.e. finitely many actions are available.
+"""
 class DiscretePolicy(StochasticPolicy):
     def __init__(self, network, value_network):
         super(DiscretePolicy, self).__init__(network, value_network, "categorical")
@@ -83,6 +94,9 @@ class DiscretePolicy(StochasticPolicy):
         dist = get_distribution(self.dist_str, params)
         return dist
 
+"""
+    Gaussian policy over a continuous action space.
+"""
 class GaussianPolicy(StochasticPolicy):
     def __init__(self, network, value_network):
         super(GaussianPolicy, self).__init__(network, value_network, "normal")
