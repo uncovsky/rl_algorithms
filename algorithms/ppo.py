@@ -1,6 +1,5 @@
 import infrastructure.utils as utils
 from infrastructure.logger import Logger
-from infrastructure.pg_utils import initialize_layer
 
 import gymnasium as gym
 import numpy as np
@@ -330,8 +329,6 @@ class PGTrainer:
                     if j == -1 or dones[j]:
                         returns_sel.append(returns[j+1].item())
                         adv_sel.append(advantages[j+1].item())
-                print("Returns:", returns_sel)
-                print("Advantages:", adv_sel)
                         
 
                 print(f"Epoch {i+1}, undiscounted ep reward - {rewm}")
@@ -499,7 +496,7 @@ params = {
         'gamma' : 0.99,
         'gae_lbda' : 0.95,
         'batch_size' : 2048,
-        'output' : False,
+        'output' : True,
 }
 
 
@@ -517,7 +514,7 @@ def train_cartpole(env, train_steps, gamma) -> PGPolicy:
                         validation_env=None,
                         )
     # Train the agent on 1000 steps.
-    pol = trainer.train(params["gamma"], steps)
+    pol = trainer.train(params["gamma"], train_steps)
     return pol
 
 
@@ -535,7 +532,7 @@ def train_acrobot(env, train_steps, gamma) -> PGPolicy:
                         validation_env=None,
                         )
     # Train the agent on 1000 steps.
-    pol = trainer.train(params["gamma"], steps)
+    pol = trainer.train(params["gamma"], train_steps)
     return pol
 
 def train_lunarlander(env, train_steps, gamma) -> PGPolicy:
@@ -552,7 +549,7 @@ def train_lunarlander(env, train_steps, gamma) -> PGPolicy:
                         validation_env=None,
                         )
     # Train the agent on 1000 steps.
-    pol = trainer.train(params["gamma"], steps)
+    pol = trainer.train(params["gamma"], train_steps)
     return pol
 
 
@@ -588,11 +585,11 @@ def train_carracing(env, train_steps, gamma) -> PGPolicy:
                         ppo_minibatches=params['ppo_minibatches'],
                         gae_lbda = params["gae_lbda"],
                         batch_size=params["batch_size"],
-                        output=params['output'],
+                        output=True,
                         validation_env=None,
                         )
     # Train the agent on 1000 steps.
-    pol = trainer.train(params["gamma"], steps)
+    pol = trainer.train(params["gamma"], train_steps)
     return pol
 
 

@@ -1,10 +1,69 @@
 import numpy as np
 import gymnasium as gym
-import utils as utils
+import infrastructure.utils as utils
 import torch
 
+
 """
-    Collect trajectories from gym environment
+    A set of utility functions useful for PG-like algorithms that rely on
+    collecting trajectories / estimating MC/GAE returns.
+"""
+
+
+def calculate_rew(rews, dones, gamma):
+    """
+        Calculate MC estimate of returns for a set of trajectories.
+
+        `rews` and `dones` are flattened shape (N, ) tensors with data pertaining to
+        possibly multiple trajectories.
+
+        returns `result` - shape (N, ) tensor with each cell corresponding to
+        MC return estimate of the given state.
+    """
+
+    G = 0
+    res = torch.zeros(len(rews))
+
+    for idx in range(len(rews) - 1, -1, -1):
+
+        # Reset running reward
+        if dones[idx]:
+            G = 0
+
+        G = rews[idx] + gamma * G
+        res[idx] = G
+
+    return res
+
+
+def calculate_gae(policy, rews, states, dones, gamma, gae_lambda=0.95):
+
+    gae = 0
+    res = torch.zeros(len(rews))
+
+    for idx in range(len(rews) - 1, -1, -1):
+
+        # reset gae counter on ends of episodes
+        if dones[idx]:
+            gae = 0
+
+        # TD error, add bootstrap if not the last state in episode
+        delta = rews[idx] - policy.value(states[idx])
+        
+        # if not end of episode, add bootstrap term
+        if not dones[idx]:
+            delta += gamma * policy.value(states[idx + 1])
+
+        gae = delta + gamma * gae_lambda * gae
+
+        res[idx] = gae
+
+    return res
+
+
+"""
+    Collect trajectories from gym environment - limited by `step_limit`,
+    potentially bootstrap on truncation.
 """
 
 def collect_trajectories(env, policy, step_limit, gamma, bootstrap_trunc, episode_limit=0):
@@ -90,6 +149,64 @@ def collect_trajectories(env, policy, step_limit, gamma, bootstrap_trunc, episod
     info = { 
             "lenm" : np.mean(ep_lengths[:-1]),
             "rewm" : np.mean(ep_rewards[:-1]),
+    }
+
+    return states, actions, rewards, dones, info
+
+
+
+"""
+    Collect full episodes from gym env, no preemptive truncation
+"""
+def collect_full_episodes(env, policy, episode_count=10, gamma=0.99):
+
+    states, actions, rewards, dones = [], [], [], []
+
+    ep_rewards = []
+    ep_lengths = []
+
+    steps = 0
+    ep_length = 0
+    ep_reward = 0
+    
+    for i in range(episode_count):
+
+        obs, _ = env.reset()
+        obs = utils.to_torch(obs)
+        done = False
+        disc = 1
+
+        while not done:
+
+            # remember to cast observations to tensors for your models
+            action = policy.play(obs)
+            states.append(obs)
+            actions.append(action)
+
+            obs, reward, terminated, truncated, _ = env.step(action)
+
+            ep_reward += disc * reward 
+            disc *= gamma
+            ep_length += 1
+
+            steps += 1
+            obs = utils.to_torch(obs)
+
+            rewards.append(reward)
+
+            if terminated or truncated:
+                done = True 
+                ep_rewards.append(ep_reward)
+                ep_lengths.append(ep_length)
+                ep_length = 0
+                ep_reward = 0
+
+            dones.append(done)
+    
+    # Don't count the lsat episode
+    info = { 
+            "lenm" : np.mean(ep_lengths),
+            "rewm" : np.mean(ep_rewards),
     }
 
     return states, actions, rewards, dones, info
